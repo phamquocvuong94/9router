@@ -1,22 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-// Mirror the redaction logic from src/app/api/usage/request-details/route.js
-// so we can test it in isolation.
-function redactDetails(details) {
-  return (details || []).map((d) => {
-    const redacted = { ...d };
-    for (const key of ["request", "providerRequest", "providerResponse", "response"]) {
-      if (redacted[key] !== undefined) {
-        redacted[key] = { redacted: true };
-      }
-    }
-    return redacted;
-  });
-}
+const mocks = vi.hoisted(() => ({
+  getRequestDetails: vi.fn(),
+}));
 
-describe("request-details redaction", () => {
-  it("removes conversation payloads but keeps metadata", () => {
-    const details = [{
+vi.mock("@/lib/usageDb", () => mocks);
+
+describe("request-details API payloads", () => {
+  it("returns complete request and response payloads", async () => {
+    const detail = {
       id: "abc",
       provider: "opencode",
       model: "deepseek-v4-flash-free",
@@ -27,28 +19,34 @@ describe("request-details redaction", () => {
       providerRequest: { messages: [{ role: "user", content: "secret prompt" }] },
       providerResponse: { choices: [{ message: { content: "secret answer" } }] },
       response: { content: "secret answer" },
-    }];
-    const out = redactDetails(details)[0];
-    expect(out.id).toBe("abc");
-    expect(out.provider).toBe("opencode");
-    expect(out.model).toBe("deepseek-v4-flash-free");
-    expect(out.tokens).toEqual({ prompt_tokens: 10, completion_tokens: 5 });
-    expect(out.request).toEqual({ redacted: true });
-    expect(out.providerRequest).toEqual({ redacted: true });
-    expect(out.providerResponse).toEqual({ redacted: true });
-    expect(out.response).toEqual({ redacted: true });
+    };
+    mocks.getRequestDetails.mockResolvedValueOnce({
+      details: [detail],
+      pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 },
+    });
+
+    const { GET } = await import("@/app/api/usage/request-details/route.js");
+    const response = await GET(new Request("http://localhost/api/usage/request-details"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.details[0]).toEqual(detail);
+    expect(body.details[0].request.messages[0].content).toBe("secret prompt");
+    expect(body.details[0].response.content).toBe("secret answer");
+    expect(body.details[0].request).not.toEqual({ redacted: true });
   });
 
-  it("handles empty details", () => {
-    expect(redactDetails([])).toEqual([]);
-    expect(redactDetails(null)).toEqual([]);
-  });
+  it("keeps empty details and metadata intact", async () => {
+    mocks.getRequestDetails.mockResolvedValueOnce({
+      details: [],
+      pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 },
+    });
 
-  it("keeps non-sensitive fields untouched", () => {
-    const details = [{ id: "x", status: "error", latency: { total: 100 } }];
-    const out = redactDetails(details)[0];
-    expect(out.id).toBe("x");
-    expect(out.status).toBe("error");
-    expect(out.latency).toEqual({ total: 100 });
+    const { GET } = await import("@/app/api/usage/request-details/route.js");
+    const response = await GET(new Request("http://localhost/api/usage/request-details"));
+    const body = await response.json();
+
+    expect(body.details).toEqual([]);
+    expect(body.pagination.totalItems).toBe(0);
   });
 });
