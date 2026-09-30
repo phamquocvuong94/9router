@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isLocalRequest } from "@/dashboardGuard";
+import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { getRequestDetails } from "@/lib/usageDb";
 
 /**
@@ -7,6 +9,14 @@ import { getRequestDetails } from "@/lib/usageDb";
  */
 export async function GET(request) {
   try {
+    // The dashboard detail drawer intentionally displays complete request and
+    // response bodies. Require a dashboard session or a verified local request.
+    const authToken = request.cookies?.get?.("auth_token")?.value;
+    const hasDashboardSession = await verifyDashboardAuthToken(authToken);
+    if (!hasDashboardSession && !isLocalRequest(request)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     
     const pageRaw = parseInt(searchParams.get("page"));
@@ -47,23 +57,7 @@ export async function GET(request) {
     if (endDate) filter.endDate = endDate;
     
     const result = await getRequestDetails(filter);
-
-    // Redact conversation payloads: the stored details include full request
-    // bodies (user prompts, tool calls) and provider responses. Returning them
-    // wholesale lets any dashboard-authenticated user (or, if requireLogin is
-    // disabled, anyone) read every user's conversation history. Keep the
-    // metadata (model, tokens, latency, status) but drop message content.
-    const redactedDetails = (result.details || []).map((d) => {
-      const redacted = { ...d };
-      for (const key of ["request", "providerRequest", "providerResponse", "response"]) {
-        if (redacted[key] !== undefined) {
-          redacted[key] = { redacted: true };
-        }
-      }
-      return redacted;
-    });
-
-    return NextResponse.json({ ...result, details: redactedDetails });
+    return NextResponse.json(result);
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(
