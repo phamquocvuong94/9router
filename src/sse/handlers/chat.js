@@ -8,6 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
+import { handleCodexQuotaExhausted } from "../services/codexQuotaGuard.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -375,6 +376,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const shouldFallback = provider === "antigravity" && quotaResetMs
       ? true
       : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+
+    // Codex usage_limit_reached (resetsAtMs parsed): single-quota (Free) accounts get
+    // disabled until the daily recheck sees the quota back. Background, fail-open.
+    if (provider === "codex" && result.status === 429 && result.resetsAtMs) {
+      handleCodexQuotaExhausted({
+        connectionId: credentials.connectionId,
+        accessToken: refreshedCredentials.accessToken,
+        providerSpecificData: refreshedCredentials.providerSpecificData,
+        connectionName: credentials.connectionName,
+      }).catch(() => { });
+    }
 
     if (shouldFallback) {
       log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);

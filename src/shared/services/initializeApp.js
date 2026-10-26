@@ -113,6 +113,12 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
   }
 
+  // Codex single-quota guard: daily 03:00 (Asia/Ho_Chi_Minh) recheck re-enables
+  // auto-disabled Free accounts whose quota has reset. Idle ticks only read the clock.
+  import("@/sse/services/codexQuotaGuard.js")
+    .then(({ startCodexQuotaGuard }) => startCodexQuotaGuard())
+    .catch((e) => console.log("[CodexQuotaGuard] scheduler start failed:", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
