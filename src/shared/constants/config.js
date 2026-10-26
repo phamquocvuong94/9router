@@ -92,6 +92,16 @@ export const QUOTA_AUTOPING_CONFIG = {
   },
 };
 
+// Codex single-quota (Free plan) accounts: auto-disable on usage_limit_reached,
+// re-enable from a daily recheck once the quota window has reset.
+export const CODEX_QUOTA_GUARD_CONFIG = {
+  tickIntervalMs: 60000,                // scheduler tick (checks wall clock only)
+  timeZone: "Asia/Ho_Chi_Minh",         // zone for the daily recheck hour
+  recheckHour: 3,                       // run once per day at/after 03:00 local
+  disabledReason: "codex_quota",        // marker separating auto- from user-disabled
+  lastRunSettingsKey: "codexQuotaRecheckLastRun",
+};
+
 // Re-export from providers.js for backward compatibility
 export {
   FREE_PROVIDERS,

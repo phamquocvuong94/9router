@@ -115,7 +115,12 @@ export async function PUT(request, { params }) {
     if (priority !== undefined) updateData.priority = priority;
     if (globalPriority !== undefined) updateData.globalPriority = globalPriority;
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
-    if (isActive !== undefined) updateData.isActive = isActive;
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+      // A manual toggle takes ownership: the Codex quota recheck must not re-enable it later.
+      updateData.autoDisabledReason = null;
+      updateData.autoDisabledAt = null;
+    }
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
